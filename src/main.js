@@ -4,6 +4,7 @@ import cors from "cors";
 import mongoose from "mongoose";
 
 import modelCuentas from "./model/cuenta.js";
+import cuenta from "./model/cuenta.js";
 
 //crear el web server
 const server = express();
@@ -87,26 +88,50 @@ router.post("/cuenta/agregarCuenta", function (req, res) {
 });
 
 router.post("/cuenta/agregarCuentaDB", async (req, res) => {
-  const cuentas = req.body.cuentas;
-  const existeCuenta = await modelCuentas.find({
-    cuenta: cuentas.cuenta,
-  });
-  console.log(existeCuenta);
-  const detalleCuenta = new modelCuentas(cuentas);
-  detalleCuenta
-    .save()
-    .then((doc) => {
-      console.log(doc);
-      return res.send({ resultado: true });
-    })
-    .catch((err) => {
-      console.error(err);
-      return res.status(500).send("Error al guardar");
+  try {
+    const cuentas = req.body.cuentas;
+    const existeCuenta = await modelCuentas.findOne({
+      cuenta: cuentas.cuenta,
     });
+    if (existeCuenta) {
+      console.log("Cuenta ya existe");
+      return res.status(400).send({
+        resultado: "La cuenta " + cuentas.cuenta + " ya existe",
+      });
+    } else {
+      const nuevaCuenta = new modelCuentas(cuentas);
+      const cuentaGuardada = await nuevaCuenta.save();
+
+      console.log("Cuenta guardada:", cuentaGuardada);
+      return res.send({ resultado: true });
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send("Error al guardar");
+  }
 });
+//*****Router sin validar que la cta existe */
+// router.post("/cuenta/agregarCuentaDB", async (req, res) => {
+//   const cuentas = req.body.cuentas;
+//   const existeCuenta = await modelCuentas.find({
+//     cuenta: cuentas.cuenta,
+//   });
+//   console.log(existeCuenta);
+//   const detalleCuenta = new modelCuentas(cuentas);
+//   detalleCuenta
+//     .save()
+//     .then((doc) => {
+//       console.log(doc);
+//       return res.send({ resultado: true });
+//     })
+//     .catch((err) => {
+//       console.error(err);
+//       return res.status(500).send("Error al guardar");
+//     });
+// });
 router.post("/resultCta", async (req, res) => {
   const cuenta = req.body.cuenta;
-  const resp = await modelCuentas.findOne({ cuenta })
+  const resp = await modelCuentas.findOne({ cuenta });
 
   console.log(resp);
   return res.send(resp);
