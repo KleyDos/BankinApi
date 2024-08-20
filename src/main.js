@@ -5,9 +5,12 @@ import mongoose from "mongoose";
 
 import modelCuentas from "./model/cuenta.js";
 import modelTransacciones from "./model/transacciones.js";
-
 import modelTipoCambio from "./model/tipoCambio.js";
-import transacciones from "./model/transacciones.js";
+import modelUsuarios from "./model/user.js";
+import { isMatch } from "date-fns";
+
+// import { format } from "date-fns";
+// import { utcToZonedTime } from "date-fns-tz";
 
 //crear el web server
 const server = express();
@@ -73,23 +76,6 @@ router.post("/registro", function (req, res) {
   res.send({ mensaje: detalleCta });
 });
 
-router.post("/cuenta/agregarCuenta", function (req, res) {
-  const cuentas = req.body.cuentas;
-  const cuentaAgrerar = detalleCta.findIndex(
-    (detalleCta) => detalleCta.cuenta === cuentas.cuenta
-  );
-  if (cuentaAgrerar === -1) {
-    detalleCta.push(cuentas);
-  } else {
-    console.log("Cuenta ya existe");
-    return res.status(400).send({
-      resultado: "La cuenta " + cuentas.cuenta + " ya existe",
-    });
-  }
-  console.log(detalleCta);
-  res.send({ resultado: detalleCta });
-});
-
 router.post("/cuenta/agregarCuentaDB", async (req, res) => {
   try {
     const cuentas = req.body;
@@ -113,9 +99,8 @@ router.post("/cuenta/agregarCuentaDB", async (req, res) => {
     // registro de en la bitacora
     const nuevaTransaccion = new modelTransacciones({
       fecha: new Date(),
-      tipo: "Agregar Cuenta",
-      detalle:
-        "Se ha creado una nueva cuenta a nombre de " + req.body.nombre + ".",
+      tipo: "Creación de Cuenta",
+      detalle: "Creación de cuenta:" + req.body.nombre,
       cuenta: nuevaCuenta._id,
     });
     const transaccionGuardada = await nuevaTransaccion.save();
@@ -166,6 +151,12 @@ router.get("/home/obtenerCuentas", async (req, res) => {
 router.get("/bitacora/obtenerBitacora", async (req, res) => {
   try {
     const bitacora = await modelTransacciones.find();
+    // const bitacoraFormateada = bitacora.map((transaccion) => {
+    //   const zoneDate = utcToZonedTime(transaccion.fecha, "America/Costa_Rica");
+    //   transaccion.fecha = format(zonedDate, "dd/MM/yy HH:mm:ss");
+    //   return transaccion;
+    // });
+
     res.json(bitacora);
   } catch (error) {
     console.error("Error para obtener bitacora", error);
@@ -188,7 +179,7 @@ router.post("/tipoCambio", async (req, res) => {
       const nuevaTransaccion = new modelTransacciones({
         fecha: new Date(),
         tipo: "Actualización Tipo de Cambio",
-        detalle: `Se ha actualizado el Tipo de Cambio: Tipo de Cambio Compra: ${tipoCambioCompra}, Tipo de Cambio Venta: ${tipoCambioVenta}`,
+        detalle: `Actualización Tipo de Cambio: Compra: ${tipoCambioCompra}, Venta: ${tipoCambioVenta}`,
       });
       await nuevaTransaccion.save();
 
@@ -301,11 +292,11 @@ router.post("/home/trasladarFondos", async (req, res) => {
       fecha: new Date(),
       tipo: "Traslado de fondos",
       detalle:
-        "Se han traslado fondos de la cuenta: " +
+        "Traslado de fondos de la cuenta: " +
         cuentaOrigen.nombre +
         " a la cuenta: " +
         cuentaDestino.nombre +
-        " por un monto de " +
+        ", Monto: " +
         monto,
       cuenta: cuentaOrigen._id,
     });
@@ -338,7 +329,7 @@ router.delete("/home/eliminarCuenta/:Id", async (req, res) => {
     if (cuenta.saldo !== 0) {
       return res
         .status(400)
-        .json({ message: "La cuenta debe estar en saldo cero para eliminar " });
+        .json({ message: "La cuenta debe estar en saldo cero para eliminar" });
     }
 
     await modelCuentas.findByIdAndDelete(cuentaId);
@@ -387,6 +378,74 @@ router.post("/home/EditarCuenta", async (req, res) => {
   } catch (error) {
     console.error("Error para obtener cuentas", error);
     return res.status(500).send("Error para obtener cuentas");
+  }
+});
+router.post("/registroUser", async (req, res) => {
+  try {
+    const { nombre, idUsuario, usuario, contraseña } = req.body;
+    const existeUsuario = await modelUsuarios.findOne({ usuario });
+
+    if (existeUsuario) {
+      console.log("Usuario ya registrado");
+      return res.status(400).send({
+        mensaje: `El usuario  ${usuario} +  ya se encuentra registrado`,
+      });
+    }
+    const nuevoUsuario = new modelUsuarios({
+      nombre,
+      idUsuario,
+      usuario,
+      contraseña,
+    });
+    console.log("nuevoUsuario es:", nuevoUsuario);
+    await nuevoUsuario.save();
+
+    // registro de en la bitacora
+    const nuevaTransaccion = new modelTransacciones({
+      fecha: new Date(),
+      tipo: "Agregar Usuario",
+      detalle: `Se ha creado un nuevo usuario ${usuario}`,
+    });
+    await nuevaTransaccion.save();
+
+    return res.send({ resultado: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send("Error al registrar usuario");
+  }
+});
+router.post("/login", async (req, res) => {
+  try {
+    const { usuario, contraseña } = req.body;
+    console.log("usuario", usuario);
+    console.log("contraseña :>> ", contraseña);
+    const usuarioEncontrado = await modelUsuarios.findOne({ usuario });
+    console.log("usuarioEncontrado", usuarioEncontrado);
+
+    if (!usuarioEncontrado) {
+      console.log("Usuario incorrecto");
+      return res.status(400).send({
+        mensaje: "Usuario o contraseña incorrectos",
+      });
+    }
+
+    ///Comparar contraseña///
+    usuarioEncontrado.comparePassword(contraseña, (err, isMatch) => {
+      if (err) {
+        console.err(err);
+        return res.status(500).send("Error al comparar contraseñas");
+      }
+      if (!isMatch) {
+        console.log("Contraseña incorrecta");
+        return res.status(400).send({
+          mensaje: "Usuario o contraseña incorrectos",
+        });
+      }
+      return res.send({ resultado: true });
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send("Error al iniciar sesión");
   }
 });
 
